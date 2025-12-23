@@ -1,0 +1,182 @@
+// כתובת הגישה לשיטס שלך
+const sheetURL = "https://docs.google.com/spreadsheets/d/1IhvksJ9_H6RmTJbZwQWgWA9Zp3H-2C2aKZef3yE_9sQ/export?format=tsv";
+
+async function loadArticles() {
+    try {
+        const response = await fetch(sheetURL);
+        const tsvText = await response.text();
+        const rows = tsvText.split('\n').filter(row => row.trim() !== "");
+        
+        const articles = rows.slice(1).reverse().map(row => {
+            const cols = row.split('\t');
+            const clean = (text) => text ? text.trim() : "";
+            return {
+                category: clean(cols[0]),
+                title: clean(cols[1]),
+                summary: clean(cols[4]),
+                content: clean(cols[5]),
+                img: clean(cols[6]),
+                target: clean(cols[7]),
+                link: clean(cols[8])
+            };
+        });
+
+        renderContent(articles);
+
+        // פופ-אפ אוטומטי לשורה האחרונה שעלתה
+        if (articles.length > 0) {
+            setTimeout(() => {
+                showAutoUpdatePopup(articles[0]);
+            }, 1500);
+        }
+
+    } catch (err) {
+        console.error("שגיאה בטעינה:", err);
+    }
+}
+
+function renderContent(articlesArray) {
+    const magazineContainer = document.getElementById('dynamic-feed-container');
+    const mallContent = document.querySelector('.mall-content');
+    
+    // --- הפונקציה המעודכנת שממירה לינק לוידאו ---
+    function getMediaHTML(url) {
+        if (!url) return '';
+        
+        // בדיקה אם הלינק הוא יוטיוב
+        if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            let videoId = "";
+            if (url.includes('v=')) {
+                videoId = url.split('v=')[1].split('&')[0];
+            } else {
+                videoId = url.split('/').pop();
+            }
+            // מחזיר נגן וידאו רספונסיבי
+            return `
+                <div style="position:relative; padding-bottom:56.25%; height:0; overflow:hidden; border-radius:12px; margin-bottom:10px;">
+                    <iframe src="https://www.youtube.com/embed/${videoId}" 
+                            style="position:absolute; top:0; left:0; width:100%; height:100%; border:none;" 
+                            allowfullscreen></iframe>
+                </div>`;
+        }
+        
+        // אם זה לא יוטיוב, מציג תמונה כרגיל
+        return `<img src="${url}" style="width:100%; border-radius:12px; margin-bottom:10px; max-height:200px; object-fit:cover;" onerror="this.style.display='none'">`;
+    }
+
+    if (magazineContainer) {
+        let magHTML = "";
+        articlesArray.filter(art => art.target !== "קניון").forEach(art => {
+            
+            let accentColor = "#007bff"; 
+            let icon = "📄";
+            
+            if (art.category.includes("רכב")) { 
+                accentColor = "#ff4757"; 
+                icon = "🚗"; 
+            } else if (art.category.includes("נדלן")) { 
+                accentColor = "#2ed573"; 
+                icon = "🏠"; 
+            } else if (art.category === "קופון") { 
+                accentColor = "#ff0055"; 
+                icon = "🏷️"; 
+            } else if (art.category.includes("הופעה")) { // הוספתי אייקון להופעות
+                accentColor = "#FFD700";
+                icon = "🎸";
+            }
+
+            magHTML += `
+                <article class="feed-post-card" style="margin-bottom:25px; padding:15px; border-radius:15px; box-shadow:0 8px 20px rgba(0,0,0,0.1); background:#fff; text-align:right; direction:rtl; border-top: 6px solid ${accentColor};">
+                    <span style="background:${accentColor}15; color:${accentColor}; padding:3px 12px; border-radius:20px; font-size:12px; font-weight:bold;">${icon} ${art.category}</span>
+                    <h4 style="margin:15px 0 10px; color:#222; font-weight:bold;">${art.title}</h4>
+                    ${getMediaHTML(art.img)}
+                    <p style="font-size:14px; color:#555; line-height:1.5;">${art.summary}</p>
+                    <div style="display:flex; gap:10px; margin-top:10px;">
+                        <button onclick="toggleText(this)" style="color:${accentColor}; background:none; border:1px solid ${accentColor}; border-radius:8px; padding:6px 15px; font-weight:bold; cursor:pointer;">קרא עוד »</button>
+                        ${art.link ? `<button onclick="window.open('${art.link}', '_blank')" style="background:${accentColor}; color:#fff; border:none; padding:8px 16px; border-radius:8px; font-size:12px; cursor:pointer; font-weight:bold;">לפרטים / רכישה</button>` : ''}
+                    </div>
+                    <div class="full-body" style="display:none; margin-top:15px; border-top:1px dashed #eee; padding-top:15px; color:#333;">${art.content}</div>
+                </article>`;
+        });
+        magazineContainer.innerHTML = magHTML;
+    }
+
+    // לוגיקת הקניון הווירטואלי
+    if (mallContent) {
+        const mallArticles = articlesArray.filter(art => art.target === "קניון" || art.target === "שניהם");
+        const existingFloors = mallContent.querySelectorAll('.floor-section').length;
+        let dynamicMallHTML = "";
+        
+        for (let i = 0; i < mallArticles.length; i += 12) {
+            const currentFloorNum = existingFloors + Math.floor(i / 12) + 1;
+            const floorStores = mallArticles.slice(i, i + 12);
+            
+            dynamicMallHTML += `
+                <div id="floor${currentFloorNum}" class="floor-section" style="margin-top:40px;">
+                    <h2 style="background:#3f51b5; color:#fff; padding:8px 15px; border-radius:5px; display:inline-block;">קומה ${currentFloorNum}</h2>
+                    <div class="stores-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap:15px; margin-top:15px;">
+                        ${floorStores.map(art => `
+                            <div class="store-card" style="background:#fff; border:1px solid #ddd; border-radius:12px; padding:20px; text-align:center; cursor:pointer;" 
+                                 onclick="openLandingPage('${art.title.replace(/'/g, "\\'")}', '${encodeURIComponent(art.content)}', '${art.link}')">
+                                <div style="font-size:35px; margin-bottom:10px;">🛍️</div>
+                                <div style="font-weight:bold; color:#333;">${art.title}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>`;
+        }
+        mallContent.insertAdjacentHTML('beforeend', dynamicMallHTML);
+        if (typeof updateElevator === 'function') updateElevator();
+    }
+}
+
+// פונקציות עזר: פופ-אפ, דף נחיתה ופתיחת טקסט
+function showAutoUpdatePopup(item) {
+    const popup = document.createElement('div');
+    popup.style = "position:fixed; bottom:20px; right:20px; width:280px; background:#fff; z-index:999999; border-radius:15px; box-shadow:0 5px 25px rgba(0,0,0,0.2); padding:15px; direction:rtl; border:2px solid #ff0055; animation: slideIn 0.5s ease-out;";
+    popup.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="background:#333; color:#fff; padding:2px 8px; border-radius:5px; font-size:10px; font-weight:bold;">חדש ב-שער הארץ! ⚡</span>
+            <button onclick="this.parentElement.parentElement.remove()" style="border:none; background:none; cursor:pointer; font-weight:bold;">✕</button>
+        </div>
+        <h4 style="margin:0; color:#111; font-size:14px;">${item.title}</h4>
+        <p style="margin:5px 0 0; font-size:12px; color:#666;">${item.summary}</p>
+        <style>@keyframes slideIn { from { transform: translateX(120%); } to { transform: translateX(0); } }</style>
+    `;
+    document.body.appendChild(popup);
+}
+
+function openLandingPage(title, content, link) {
+    const decodedContent = decodeURIComponent(content);
+    const modal = document.createElement('div');
+    modal.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:999999; display:flex; align-items:center; justify-content:center; padding:20px; direction:rtl;";
+    modal.innerHTML = `
+        <div style="background:#fff; width:100%; max-width:450px; border-radius:20px; overflow:hidden; position:relative; text-align:right;">
+            <button onclick="this.closest('div').parentElement.remove()" style="position:absolute; top:15px; left:15px; border:none; background:#eee; border-radius:50%; width:30px; height:30px; cursor:pointer; font-weight:bold;">✕</button>
+            <div style="padding:40px 20px 25px; text-align:center; background:#f8f9fa; border-bottom:1px solid #eee;">
+                <div style="font-size:45px; margin-bottom:10px;">🛍️</div>
+                <h2 style="margin:0; color:#111; font-size:1.8rem; font-weight:900;">${title}</h2>
+            </div>
+            <div style="padding:25px; color:#333; line-height:1.7;">
+                <div style="margin-bottom:30px;">${decodedContent}</div>
+                <div style="text-align:center;">
+                    <button onclick="window.open('${link}', '_blank')" style="background:#ff0055; color:#fff; padding:16px 40px; border:none; border-radius:50px; font-weight:bold; cursor:pointer; width:100%;">מעבר לפרטים</button>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+}
+
+function toggleText(btn) {
+    const content = btn.closest('article').querySelector('.full-body');
+    if (content.style.display === "none" || content.style.display === "") {
+        content.style.display = "block";
+        btn.innerText = "סגור «";
+    } else {
+        content.style.display = "none";
+        btn.innerText = "קרא עוד »";
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadArticles);
+
